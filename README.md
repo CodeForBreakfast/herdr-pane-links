@@ -22,9 +22,14 @@ herdr ends a link at the first whitespace and drops trailing punctuation such
 as a full stop.
 
 Ctrl-clicking the link anywhere in herdr focuses the named pane, switching
-workspace and tab if needed. If the pane no longer exists, herdr shows a "No
-such herdr pane" notification and focus stays where it was. A plain click, and
-a Ctrl-click on any other link, behave exactly as they do without the plugin.
+workspace and tab if needed. If the pane no longer exists, focus stays where
+it was and herdr shows a "No such herdr pane" notification. herdr shows that
+notification only when `ui.toast.delivery = "herdr"` is set in its config,
+which is not the default. It queues behind any notifications already waiting,
+so it can take a few seconds to appear.
+
+A plain click, and a Ctrl-click on any other link, behave exactly as they do
+without the plugin.
 
 The `.invalid` host never resolves, so the link fails harmlessly if it is
 clicked outside herdr. The link is `https://` rather than a custom scheme
@@ -67,7 +72,7 @@ herdr plugin list
 
 `tests/e2e.sh` drives the link handler through a throwaway herdr server with
 its own config and state directories, so the herdr you are working in is left
-alone. It needs `jq`.
+alone. It needs `jq`, and `script` from util-linux to attach a herdr client.
 
 ```bash
 tests/e2e.sh

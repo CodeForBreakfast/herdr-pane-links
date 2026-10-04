@@ -4,9 +4,11 @@ import json
 import os
 import socket
 import sys
+import time
 from urllib.parse import unquote, urlsplit
 
 LINK_PREFIX = "/pane/"
+NOTICE_PATIENCE_SECONDS = 5
 
 
 def request(method, params):
@@ -32,12 +34,19 @@ def main():
     if "error" not in response:
         return 0
 
-    request("notification.show", {
-        "title": "No such herdr pane",
-        "body": f"Nothing to focus: pane {pane_id} does not exist. The link may be stale.",
-    })
-    print(json.dumps(response["error"]), file=sys.stderr)
+    notice = show_notice("No such herdr pane", f"Nothing to focus: pane {pane_id} does not exist. The link may be stale.")
+    print(json.dumps({"error": response["error"], "notice": notice}), file=sys.stderr)
     return 1
+
+
+def show_notice(title, body):
+    """herdr refuses a notification sent within a second of another one, so retry until it is taken."""
+    deadline = time.monotonic() + NOTICE_PATIENCE_SECONDS
+    while True:
+        result = request("notification.show", {"title": title, "body": body}).get("result", {})
+        if result.get("reason") != "rate_limited" or time.monotonic() > deadline:
+            return result
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":
