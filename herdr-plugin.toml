@@ -1,0 +1,17 @@
+id = "codeforbreakfast.pane-links"
+name = "Pane Links"
+version = "0.1.0"
+min_herdr_version = "0.9.3"
+description = "Ctrl-click a https://herdr.invalid/pane/<pane-id> link to focus that pane"
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "focus-pane"
+title = "Focus the pane a link names"
+command = ["python3", "focus_pane.py"]
+
+[[link_handlers]]
+id = "pane-link"
+title = "Focus herdr pane"
+pattern = "^https://herdr\\.invalid/pane/[^/?#]+$"
+action = "focus-pane"
