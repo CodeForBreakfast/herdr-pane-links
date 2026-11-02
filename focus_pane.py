@@ -1,13 +1,21 @@
-"""Focus the herdr pane named by a clicked https://herdr.invalid/pane/<pane-id> link."""
+"""Focus the herdr pane named by a clicked pane link.
+
+A link is https://herdr.invalid/pane/<pane-id>, or
+https://herdr.invalid/<host>/<session>/pane/<pane-id> for one that names the
+host and herdr session the pane is in.
+"""
 
 import json
 import os
+import re
 import socket
+import subprocess
 import sys
 import time
+from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-LINK_PREFIX = "/pane/"
+LINK_PATH = re.compile(r"/(?:(?P<host>[^/]+)/(?P<session>[^/]+)/)?pane/(?P<pane_id>[^/]+)")
 NOTICE_PATIENCE_SECONDS = 5
 
 
@@ -18,17 +26,50 @@ def request(method, params):
         return json.loads(conn.makefile().readline())
 
 
-def pane_id_from(url):
-    path = urlsplit(url).path
-    return unquote(path[len(LINK_PREFIX):]) if path.startswith(LINK_PREFIX) else ""
+def parse_link(url):
+    """Return the link's pane_id, host and session, with host and session None for a bare pane link."""
+    match = LINK_PATH.fullmatch(urlsplit(url).path)
+    if not match:
+        return None
+    return {key: unquote(value) if value else None for key, value in match.groupdict().items()}
+
+
+def own_host():
+    """The name the user gave this machine, in a one-line `host` file in the plugin's config dir."""
+    try:
+        return (Path(os.environ["HERDR_PLUGIN_CONFIG_DIR"]) / "host").read_text().strip() or None
+    except FileNotFoundError:
+        return None
+
+
+def own_session():
+    listing = subprocess.run(
+        [os.environ.get("HERDR_BIN_PATH", "herdr"), "session", "list", "--json"],
+        capture_output=True, text=True, check=True,
+    )
+    socket_path = os.environ["HERDR_SOCKET_PATH"]
+    return next((s["name"] for s in json.loads(listing.stdout)["sessions"] if s["socket_path"] == socket_path), None)
 
 
 def main():
     url = os.environ.get("HERDR_PLUGIN_CLICKED_URL", "")
-    pane_id = pane_id_from(url)
-    if not pane_id:
+    link = parse_link(url)
+    if not link:
         print(f"not a pane link: {url!r}", file=sys.stderr)
         return 1
+    pane_id = link["pane_id"]
+
+    if link["host"] is not None:
+        here = {"host": own_host(), "session": own_session()}
+        elsewhere = {"host": link["host"], "session": link["session"]}
+        if here != elsewhere:
+            notice = show_notice(
+                "Pane is in another herdr",
+                f"Pane {pane_id} is in herdr session {elsewhere['session']} on {elsewhere['host']}. "
+                f"This is session {here['session']} on {here['host'] or 'a host with no name set'}.",
+            )
+            print(json.dumps({"elsewhere": elsewhere, "notice": notice}), file=sys.stderr)
+            return 1
 
     response = request("pane.focus", {"pane_id": pane_id})
     if "error" not in response:

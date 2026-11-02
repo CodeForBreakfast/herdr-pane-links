@@ -31,6 +31,31 @@ so it can take a few seconds to appear.
 A plain click, and a Ctrl-click on any other link, behave exactly as they do
 without the plugin.
 
+## A link that names its host and session
+
+A pane id means something only inside the herdr server that gave it. Each
+herdr session runs its own server, and the same id can name different panes in
+two sessions or on two machines. A link that may be clicked somewhere else,
+such as one sent to a phone, can name the host and the herdr session as well:
+
+```text
+https://herdr.invalid/<host>/<session>/pane/<pane-id>
+```
+
+`<session>` is the herdr session's name, as `herdr session list` shows it, such
+as `default`. `<host>` is a name you give the machine. Set it in a file named
+`host` in the plugin's config directory:
+
+```bash
+echo thinkpad >"$(herdr plugin config-dir codeforbreakfast.pane-links)/host"
+```
+
+A Ctrl-click on such a link focuses the pane when the host and session are the
+ones the click happened in. Otherwise focus stays where it was, and herdr shows
+a "Pane is in another herdr" notification that names the link's host and
+session. Without a `host` file, every link that names a host shows that
+notification.
+
 The `.invalid` host never resolves, so the link fails harmlessly if it is
 clicked outside herdr. The link is `https://` rather than a custom scheme
 because of herdr issue #4874: herdr skips plugin link handlers for a Ctrl-click
@@ -62,7 +87,8 @@ To run it from a local checkout instead:
 herdr plugin link /path/to/herdr-pane-links
 ```
 
-There is nothing to configure. Check that herdr has picked it up:
+The plain link needs no configuration. A link that names its host needs
+the `host` file described above. Check that herdr has picked the plugin up:
 
 ```bash
 herdr plugin list

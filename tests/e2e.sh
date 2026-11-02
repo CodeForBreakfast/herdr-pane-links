@@ -36,6 +36,9 @@ focused_pane() { herdr api snapshot | jq -r '.result.snapshot.focused_pane_id'; 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 herdr plugin link "$ROOT" >/dev/null
+HOST=testhost
+echo "$HOST" >"$(herdr plugin config-dir codeforbreakfast.pane-links)/host"
+SESSION=$(herdr session list --json | jq -r '.sessions[] | select(.default) | .name')
 
 herdr workspace create --cwd "$SCRATCH" --label clicker --focus >/dev/null
 # herdr only shows notifications while a client is attached.
@@ -73,14 +76,39 @@ wait_for_plugin_exit() {
   fail "plugin action never finished"
 }
 
-echo "a link to a pane in another workspace focuses it"
-click_link "https://herdr.invalid/pane/$TARGET_TAB" | jq -e '.result.handled == true' >/dev/null ||
-  fail "herdr did not route the link to the plugin"
-for _ in $(seq 50); do [ "$(focused_pane)" = "$TARGET_TAB" ] && break; sleep 0.1; done
-[ "$(focused_pane)" = "$TARGET_TAB" ] || fail "focus is on $(focused_pane), not $TARGET_TAB"
+focuses_target() {
+  local url=$1
+  click_link "$url" | jq -e '.result.handled == true' >/dev/null ||
+    fail "herdr did not route $url to the plugin"
+  for _ in $(seq 50); do [ "$(focused_pane)" = "$TARGET_TAB" ] && break; sleep 0.1; done
+  [ "$(focused_pane)" = "$TARGET_TAB" ] || fail "$url left focus on $(focused_pane), not $TARGET_TAB"
+  wait_for_plugin_exit >/dev/null
+  herdr workspace focus w1 >/dev/null
+  herdr pane list | jq -e --arg p "$CLICKER" '.result.panes[] | select(.pane_id == $p) | .focused' >/dev/null
+}
 
-herdr workspace focus w1 >/dev/null
-herdr pane list | jq -e --arg p "$CLICKER" '.result.panes[] | select(.pane_id == $p) | .focused' >/dev/null
+# Expects the click to focus nothing and to show a notice naming where the pane is.
+says_pane_is_elsewhere() {
+  local url=$1 host=$2 session=$3
+  click_link "$url" | jq -e '.result.handled == true' >/dev/null ||
+    fail "herdr did not route $url to the plugin"
+  wait_for_plugin_exit |
+    jq -e --arg h "$host" --arg s "$session" '.stderr | fromjson | .elsewhere == {host: $h, session: $s} and .notice.shown' >/dev/null ||
+    fail "plugin did not say that $url is on host $host, session $session"
+  [ "$(focused_pane)" = "$CLICKER" ] || fail "$url moved focus to $(focused_pane)"
+}
+
+echo "a link to a pane in another workspace focuses it"
+focuses_target "https://herdr.invalid/pane/$TARGET_TAB"
+
+echo "a link naming this host and session focuses the pane"
+focuses_target "https://herdr.invalid/$HOST/$SESSION/pane/$TARGET_TAB"
+
+echo "a link naming another host focuses nothing and says where the pane is"
+says_pane_is_elsewhere "https://herdr.invalid/otherhost/$SESSION/pane/$TARGET_TAB" otherhost "$SESSION"
+
+echo "a link naming another session focuses nothing and says where the pane is"
+says_pane_is_elsewhere "https://herdr.invalid/$HOST/othersession/pane/$TARGET_TAB" "$HOST" othersession
 
 echo "a link to a missing pane focuses nothing and says so, even straight after another notification"
 herdr notification show "an earlier notification" >/dev/null
